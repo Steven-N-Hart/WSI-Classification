@@ -24,13 +24,14 @@ from datasets import dataset_factory
 from deployment import model_deploy
 from nets import nets_factory
 from preprocessing import preprocessing_factory
-import sys
-slim = tf.contrib.slim
 
-sys.path.append('/home/m087494/Tensorflow_project/models/slim/')
+slim = tf.contrib.slim
 
 tf.app.flags.DEFINE_string(
     'master', '', 'The address of the TensorFlow master to use.')
+
+tf.app.flags.DEFINE_string(
+    'models', None, 'The address of the models directory to add to path.')
 
 tf.app.flags.DEFINE_string(
     'train_dir', '/tmp/tfmodel/',
@@ -118,6 +119,8 @@ tf.app.flags.DEFINE_float(
 tf.app.flags.DEFINE_float(
     'momentum', 0.9,
     'The momentum for the MomentumOptimizer and RMSPropOptimizer.')
+
+tf.app.flags.DEFINE_float('rmsprop_momentum', 0.9, 'Momentum.')
 
 tf.app.flags.DEFINE_float('rmsprop_decay', 0.9, 'Decay term for RMSProp.')
 
@@ -219,6 +222,8 @@ tf.app.flags.DEFINE_boolean(
 
 FLAGS = tf.app.flags.FLAGS
 
+if FLAGS.models is not None:
+  sys.path.append(FLAGS.models)
 
 def _configure_learning_rate(num_samples_per_epoch, global_step):
   """Configures the learning rate.
@@ -303,13 +308,14 @@ def _configure_optimizer(learning_rate):
     optimizer = tf.train.RMSPropOptimizer(
         learning_rate,
         decay=FLAGS.rmsprop_decay,
-        momentum=FLAGS.momentum,
+        momentum=FLAGS.rmsprop_momentum,
         epsilon=FLAGS.opt_epsilon)
   elif FLAGS.optimizer == 'sgd':
     optimizer = tf.train.GradientDescentOptimizer(learning_rate)
   else:
     raise ValueError('Optimizer [%s] was not recognized', FLAGS.optimizer)
   return optimizer
+
 
 def _get_init_fn():
   """Returns a function run by the chief worker to warm-start the training.
@@ -387,17 +393,18 @@ def main(_):
     #######################
     # Config model_deploy #
     #######################
+    
     deploy_config = model_deploy.DeploymentConfig(
         num_clones=FLAGS.num_clones,
         clone_on_cpu=FLAGS.clone_on_cpu,
         replica_id=FLAGS.task,
         num_replicas=FLAGS.worker_replicas,
-        num_ps_tasks=FLAGS.num_ps_tasks
-        )
+        num_ps_tasks=FLAGS.num_ps_tasks)
 
     # Create global_step
     with tf.device(deploy_config.variables_device()):
       global_step = slim.create_global_step()
+
 
     ######################
     # Select the dataset #
@@ -421,7 +428,7 @@ def main(_):
     image_preprocessing_fn = preprocessing_factory.get_preprocessing(
         preprocessing_name,
         is_training=True)
-
+    
     ##############################################################
     # Create a dataset provider that loads data from the dataset #
     ##############################################################
@@ -435,7 +442,6 @@ def main(_):
       label -= FLAGS.labels_offset
 
       train_image_size = FLAGS.train_image_size or network_fn.default_image_size
-
       image = image_preprocessing_fn(image, train_image_size, train_image_size)
 
       images, labels = tf.train.batch(
@@ -443,6 +449,10 @@ def main(_):
           batch_size=FLAGS.batch_size,
           num_threads=FLAGS.num_preprocessing_threads,
           capacity=5 * FLAGS.batch_size)
+
+      tf.logging.info('Completed training a batch')
+
+
       labels = slim.one_hot_encoding(
           labels, dataset.num_classes - FLAGS.labels_offset)
       batch_queue = slim.prefetch_queue.prefetch_queue(
@@ -453,43 +463,31 @@ def main(_):
     ####################
     def clone_fn(batch_queue):
       """Allows data parallelism by creating multiple clones of network_fn."""
-      with tf.device(deploy_config.inputs_device()):
-        images, labels = batch_queue.dequeue()
+      images, labels = batch_queue.dequeue()
       logits, end_points = network_fn(images)
-
+      tf.logging.info('Post network')
       #############################
       # Specify the loss function #
       #############################
       if 'AuxLogits' in end_points:
         tf.losses.softmax_cross_entropy(
-            logits=end_points['AuxLogits'], onehot_labels=labels,
-            label_smoothing=FLAGS.label_smoothing, weights=0.4, scope='aux_loss')
+            labels, end_points['AuxLogits'], 
+            label_smoothing=FLAGS.label_smoothing, weights=0.4,
+            scope='aux_loss')
       tf.losses.softmax_cross_entropy(
-          logits=logits, onehot_labels=labels,
-          label_smoothing=FLAGS.label_smoothing, weights=1.0)
-      #############################
-      # Need to fix this registration before I can use with multiple GPUs
-      #InvalidArgumentError (see above for traceback): Cannot assign a device for operation 'clone_3/accuracy': Could not satisfy explicit device specification '/device:GPU:3' because no supported kernel for GPU devices is available.
-      # [[Node: clone_3/accuracy = ScalarSummary[T=DT_FLOAT, _device="/device:GPU:3"](clone_3/accuracy/tags, clone_3/Mean)]]
-      #############################
-      if FLAGS.num_clones == 1:
-        prediction = tf.argmax(logits,1)
-        correct_predition = tf.equal(
-          prediction,tf.argmax(labels,1)
-          )
-        accuracy =  tf.reduce_mean(tf.cast(correct_predition,tf.float32))
-        summaries.add(tf.summary.scalar('accuracy' , accuracy))
-
+          labels, logits, label_smoothing=FLAGS.label_smoothing, weights=1.0)
       return end_points
 
     # Gather initial summaries.
     summaries = set(tf.get_collection(tf.GraphKeys.SUMMARIES))
+    tf.logging.info('Setting initial summaries')
+
     clones = model_deploy.create_clones(deploy_config, clone_fn, [batch_queue])
     first_clone_scope = deploy_config.clone_scope(0)
     # Gather update_ops from the first clone. These contain, for example,
     # the updates for the batch_norm variables created by network_fn.
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, first_clone_scope)
-
+    tf.logging.info('Updating ops')
     # Add summaries for end_points.
     end_points = clones[0].outputs
     for end_point in end_points:
@@ -530,16 +528,16 @@ def main(_):
       optimizer = tf.train.SyncReplicasOptimizer(
           opt=optimizer,
           replicas_to_aggregate=FLAGS.replicas_to_aggregate,
+          total_num_replicas=FLAGS.worker_replicas,
           variable_averages=variable_averages,
-          variables_to_average=moving_average_variables,
-          replica_id=tf.constant(FLAGS.task, tf.int32, shape=()),
-          total_num_replicas=FLAGS.worker_replicas)
+          variables_to_average=moving_average_variables)
     elif FLAGS.moving_average_decay:
       # Update ops executed locally by trainer.
       update_ops.append(variable_averages.apply(moving_average_variables))
 
     # Variables to train.
     variables_to_train = _get_variables_to_train()
+    tf.logging.info('Got variables to train')
 
     #  and returns a train_tensor and summary_op
     total_loss, clones_gradients = model_deploy.optimize_clones(

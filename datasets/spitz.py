@@ -25,19 +25,15 @@ from __future__ import print_function
 import os
 import tensorflow as tf
 
-from datasets import dataset_utils
-
 slim = tf.contrib.slim
 
-_FILE_PATTERN = 'spitz_%s-*.tfrecord'
-
-SPLITS_TO_SIZES = {'train': 1000000, 'validation': 100000}
-
-_NUM_CLASSES = 3
+_FILE_PATTERN = 'spitz'
 
 _ITEMS_TO_DESCRIPTIONS = {
-    'image': 'A color image of varying size.',
-    'label': 'A single integer between 0 and 2',
+  'height': 'height of image',
+  'width': 'width of image',
+  'label': 'image label',
+  'image_raw': 'raw image'
 }
 
 
@@ -70,35 +66,48 @@ def get_split(split_name, dataset_dir, file_pattern='spitz_train', reader=None):
       'image/encoded': tf.FixedLenFeature((), tf.string, default_value=''),
       'image/format': tf.FixedLenFeature((), tf.string, default_value='jpeg'),
       'image/class/label': tf.FixedLenFeature(
-          [1], tf.int64, default_value=tf.zeros([1], dtype=tf.int64)),
+          [], tf.int64, default_value=tf.zeros([], dtype=tf.int64)),
   }
 
   items_to_handlers = {
-      'image': slim.tfexample_decoder.Image(shape=[299, 299,3]),
-      'label': slim.tfexample_decoder.Tensor('image/class/label',shape=[]),
+      'image': slim.tfexample_decoder.Image(),
+      'label': slim.tfexample_decoder.Tensor('image/class/label'),
   }
 
   decoder = slim.tfexample_decoder.TFExampleDecoder(
       keys_to_features, items_to_handlers)
 
   labels_to_names = None
-  if dataset_utils.has_labels(dataset_dir):
-    labels_to_names = dataset_utils.read_label_file(dataset_dir)
+  label_file = os.path.join(dataset_dir,'labels.txt')
+  with tf.gfile.Open(label_file, 'r') as f:
+    lines = f.read()
+  lines = lines.split('\n')
+  #return a dictionary of name (values) and index label(key)
+  labels_to_names = { k:v for k,v in enumerate(lines)}
 
-  #Count the total number of examples in all of these shard 
+  #Count the total number of examples in all of these shards
   num_samples = 0
-  tfrecords_to_count = [os.path.join(dataset_dir, file) 
-    for file in os.listdir(dataset_dir) 
+  tfrecords_to_count = [os.path.join(dataset_dir, file)
+    for file in os.listdir(dataset_dir)
     if file.startswith(file_pattern)]
+
   for tfrecord_file in tfrecords_to_count:
+    record_num=1
+    print('\nExamining: {}'.format(tfrecord_file))
+    try:
       for record in tf.python_io.tf_record_iterator(tfrecord_file):
+          print('Record {}'.format(num_samples,record), end='\r', flush=True)
           num_samples += 1
-          
+          record_num += 1
+    except:
+        print('Died on record_num: {}.Regenerating file without the error'.format(record_num))
+
   return slim.dataset.Dataset(
       data_sources=tfrecords_to_count,
       reader=reader,
       decoder=decoder,
       num_samples=num_samples,
       items_to_descriptions=_ITEMS_TO_DESCRIPTIONS,
-      num_classes=_NUM_CLASSES,
+      num_classes=len(labels_to_names),
       labels_to_names=labels_to_names)
+
