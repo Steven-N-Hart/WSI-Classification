@@ -125,7 +125,7 @@ def _convert_dataset(split_name, filenames, class_names_to_ids, dataset_dir):
     assert split_name in ['train', 'validation']
 
     num_per_shard = int(math.ceil(len(filenames) / float(FLAGS.num_shards)))
-
+    sys.stdout.write('\nWriting {} records in each of {} shards\n'.format(num_per_shard,FLAGS.num_shards))
     with tf.Graph().as_default():
         image_reader = ImageReader()
 
@@ -135,26 +135,29 @@ def _convert_dataset(split_name, filenames, class_names_to_ids, dataset_dir):
                 output_filename = _get_dataset_filename(
                     dataset_dir, split_name, shard_id)
 
+                sys.stdout.write('\nUsing {} as outname\n'.format(output_filename))
                 with tf.python_io.TFRecordWriter(output_filename) as tfrecord_writer:
                     start_ndx = shard_id * num_per_shard
                     end_ndx = min((shard_id + 1) *
                                   num_per_shard, len(filenames))
                     for i in range(start_ndx, end_ndx):
-                      sys.stdout.write('\r>> Converting image %d/%d shard %d' % (
-                            i + 1, len(filenames), shard_id))
-                      sys.stdout.flush()
-                      # Read the filename:
-                      image_data = tf.gfile.FastGFile(filenames[i], 'rb').read()
-                      height, width = image_reader.read_image_dims(sess, image_data)
-                      #print('Size is {} by {}'.format(height, width))
-                      class_name = os.path.basename(os.path.dirname(filenames[i]))
-                      class_id = class_names_to_ids[class_name]
+                      try:
+                        sys.stdout.write('\r>> Converting image %d/%d on shard %d' % (
+                              i + 1, len(filenames), shard_id))
+                        sys.stdout.flush()
+                        # Read the filename:
+                        image_data = tf.gfile.FastGFile(filenames[i], 'rb').read()
+                        height, width = image_reader.read_image_dims(sess, image_data)
+                        #print('Size is {} by {}'.format(height, width))
+                        class_name = os.path.basename(os.path.dirname(filenames[i]))
+                        class_id = class_names_to_ids[class_name]
 
-                      example = dataset_utils.image_to_tfexample(
-                        image_data, b'jpg', height, width, class_id)
+                        example = dataset_utils.image_to_tfexample(
+                          image_data, b'jpg', height, width, class_id)
 
-                      tfrecord_writer.write(example.SerializeToString())
-                      
+                        tfrecord_writer.write(example.SerializeToString())
+                      except :
+                        print('\nUnable to parse image {}. Skipping...\n'.format(i))
     sys.stdout.write('\n')
     sys.stdout.flush()
 

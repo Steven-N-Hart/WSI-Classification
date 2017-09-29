@@ -4,16 +4,17 @@ The purpose of this repo is to extend the functionality of TF-Slim for use in ot
 This is derived from  commit `70c86f2` of (tensorflow/models)[https://github.com/tensorflow/models].
 #Set ENV variable
 MODELS=/data/models
-
+export PYTHONPATH=/data/models/research/slim/
 
 0. Convert images to TFRecords
 # Create `scripts/build_image_data.py` to convert a directory with subdirectories of images to TFrecords and labels
 ```
 python scripts/create_tf_records.py \
-    --input_directory /data/images/ \
+    --input_directory /projects/deepLearning/mayo/data/processed/Training-Images-Set-01/ \
     --num_shards 1 \
-    --validation_count 30 \
-    --prefix spitz
+    --validation_count 10000 \
+    --prefix spitz \
+    --output_directory /data/images/
 ```
 
 

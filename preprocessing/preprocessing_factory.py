@@ -43,6 +43,7 @@ def get_preprocessing(name, is_training=False):
   """
   preprocessing_fn_map = {
       'spitz': spitz_preprocessing,
+      'sec_preprocessing': sec_preprocessing,
   }
 
   if name not in preprocessing_fn_map:
