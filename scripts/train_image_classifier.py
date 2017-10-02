@@ -19,6 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import sys
+import os
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from datasets import dataset_factory
 from deployment import model_deploy
@@ -326,6 +330,7 @@ def _get_init_fn():
   Returns:
     An init function run by the supervisor.
   """
+
   if FLAGS.checkpoint_path is None:
     return None
 
@@ -383,6 +388,21 @@ def _get_variables_to_train():
     variables_to_train.extend(variables)
   return variables_to_train
 
+def _record_accuracy(predictions,labels):
+  names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
+    'Accuracy': slim.metrics.streaming_accuracy(predictions, labels),
+  })
+
+  # Print the summaries to screen.
+  for name, value in names_to_values.items():
+    summary_name = 'eval/%s' % name
+    op = tf.summary.scalar(summary_name, value, collections=[])
+    op = tf.Print(op, [value], summary_name)
+    tf.add_to_collection(tf.GraphKeys.SUMMARIES, op)
+  return True
+
+def _pass():
+  return True
 
 def main(_):
   if not FLAGS.dataset_dir:
@@ -450,9 +470,6 @@ def main(_):
           num_threads=FLAGS.num_preprocessing_threads,
           capacity=5 * FLAGS.batch_size)
 
-      tf.logging.info('Completed training a batch')
-
-
       labels = slim.one_hot_encoding(
           labels, dataset.num_classes - FLAGS.labels_offset)
       batch_queue = slim.prefetch_queue.prefetch_queue(
@@ -476,6 +493,13 @@ def main(_):
             scope='aux_loss')
       tf.losses.softmax_cross_entropy(
           labels, logits, label_smoothing=FLAGS.label_smoothing, weights=1.0)
+
+      #############################
+      ## Calculation of accuracy ##
+      #############################
+      accuracy = slim.metrics.accuracy(tf.argmax(logits, 1), tf.argmax(labels, 1))
+      tf.add_to_collection('accuracy', accuracy)
+          
       return end_points
 
     # Gather initial summaries.
@@ -503,6 +527,20 @@ def main(_):
     # Add summaries for variables.
     for variable in slim.get_model_variables():
       summaries.add(tf.summary.histogram(variable.op.name, variable))
+
+    #########################################################
+    ## Calculation of the averaged accuracy for all clones ##
+    #########################################################
+    # Accuracy for all clones.
+    accuracy = tf.get_collection('accuracy')
+
+    # Stack and take the mean.
+    accuracy = tf.reduce_mean(tf.stack(accuracy, axis=0))
+
+
+    # Add summaries for accuracy.
+    summaries.add(tf.summary.scalar('accuracy/training', accuracy))
+
 
     #################################
     # Configure the moving averages #
@@ -560,6 +598,7 @@ def main(_):
     # created by model_fn and either optimize_clones() or _gather_clone_loss().
     summaries |= set(tf.get_collection(tf.GraphKeys.SUMMARIES,
                                        first_clone_scope))
+
 
     # Merge all summaries together.
     summary_op = tf.summary.merge(list(summaries), name='summary_op')
