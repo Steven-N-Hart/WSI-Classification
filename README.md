@@ -4,14 +4,14 @@ The purpose of this repo is to extend the functionality of TF-Slim for use in ot
 This is derived from  commit `70c86f2` of (tensorflow/models)[https://github.com/tensorflow/models].
 #Set ENV variable
 MODELS=/data/models
-export PYTHONPATH=/data/models/research/slim/
+export PYTHONPATH=$PWD/:/data/models/research/slim/
 
 0. Convert images to TFRecords
 # Create `scripts/build_image_data.py` to convert a directory with subdirectories of images to TFrecords and labels
 ```
 python scripts/create_tf_records.py \
     --input_directory /projects/deepLearning/mayo/data/processed/Training-Images-Set-01/ \
-    --num_shards 1 \
+    --num_shards 5 \
     --validation_count 10000 \
     --prefix spitz \
     --output_directory /data/images/
@@ -53,7 +53,7 @@ mv inception_v3_2016_08_28.tar.gz checkpoints/
 
 5. Run the pretrained model on the SPITZ dataset.
 ```
-DATASET_DIR=$PWD
+DATASET_DIR=/data/images/
 TRAIN_DIR=/tmp/train_logs
 python scripts/train_image_classifier.py \
     --train_dir=${TRAIN_DIR} \

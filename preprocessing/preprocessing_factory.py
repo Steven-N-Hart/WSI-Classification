@@ -20,8 +20,9 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-#from preprocessing import inception_preprocessing
 from preprocessing import spitz_preprocessing
+from preprocessing import sec_preprocessing
+
 slim = tf.contrib.slim
 
 
