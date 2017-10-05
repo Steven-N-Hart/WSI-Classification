@@ -10,7 +10,8 @@ import numpy as np
 slim = tf.contrib.slim
 
 
-def preprocess_image(image):
+def preprocess_image(image, height, width,
+                     is_training=False):
   """Data argumentation. Produce child images from a same input image.
 
   Args:
@@ -34,5 +35,5 @@ def preprocess_image(image):
   num_child_image = len(angle) + 1
   for ang in angle:
       image_single = tf.contrib.image.rotate(image,ang)
-      image_list.append(image_single)
+      image_list = tf.concat([image_list,[image_single]],0)
   return(image_list, num_child_image)

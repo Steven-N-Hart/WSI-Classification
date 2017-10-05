@@ -54,7 +54,7 @@ def preprocess_image(image, height, width,
   Raises:
     ValueError: if user does not provide bounding box
   """
-  print('Preprcessing image',image,height,width)
+  #print('Preprcessing image',image,height,width)
   if is_training:
     return preprocess_for_train(image, height, width)
   else:

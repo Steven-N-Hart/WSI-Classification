@@ -54,7 +54,7 @@ mv inception_v3_2016_08_28.tar.gz checkpoints/
 5. Run the pretrained model on the SPITZ dataset.
 ```
 DATASET_DIR=/data/images/
-TRAIN_DIR=/tmp/train_logs
+TRAIN_DIR=/tmp/from_checkpoint
 python scripts/train_image_classifier.py \
     --train_dir=${TRAIN_DIR} \
     --dataset_name=spitz \
@@ -65,4 +65,35 @@ python scripts/train_image_classifier.py \
     --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
     --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
     --preprocessing_name spitz 
+```
+
+6. Run the naive model on Spitz
+```
+TRAIN_DIR=/tmp/from_scratch
+for DA in '--DA' ''
+do
+ for model_name in inception_v4 inception_v3
+ do
+ for optimizer in adadelta adagrad adam ftrl momentum sgd rmsprop
+ do
+ for lr in 0.01 0.05 0.001
+ do
+time python scripts/train_image_classifier.py  \
+    --train_dir=${TRAIN_DIR}/${model_name}_${DA//-/}_${optimizer}_${lr} \
+    --dataset_name=spitz     \
+    --train_image_size 299 \
+    --dataset_split_name=train     \
+    --dataset_dir=${DATASET_DIR}    \
+     --model_name=${model_name} \
+     --preprocessing_name spitz  \
+     --log_every_n_steps 1000 \
+     --num_clones 4 \
+     --optimizer ${optimizer} \
+     --max_number_of_steps 20000 \
+     ${DA}
+     echo ${model_name}_${DA//-}_${optimizer}_${lr}
+    done
+  done
+ done
+done
 ```
