@@ -150,11 +150,21 @@ def main(_):
     predictions = tf.argmax(logits, 1)
     labels = tf.squeeze(labels)
 
+
+    predictions = tf.Print(predictions,[predictions],"Predictions ",summarize=100)
+    labels = tf.Print(labels,[labels],"labels ",summarize=100)
+    logits = tf.Print(logits,[logits],'logits',summarize=100)
+    predictions = tf.Print(predictions,[tf.confusion_matrix(labels,predictions),predictions.shape],'Differences',summarize=10)
+
     # Define the metrics:
     names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
         'Accuracy': slim.metrics.streaming_accuracy(predictions, labels),
-        'Recall_5': slim.metrics.streaming_recall_at_k(
-            logits, labels, 5),
+        'TruePositives': slim.metrics.streaming_true_positives(predictions, labels),        
+        'TrueNegatives': slim.metrics.streaming_true_negatives(predictions, labels),
+        'FalsePositives': slim.metrics.streaming_false_positives(predictions, labels),
+        'FalseNegatives': slim.metrics.streaming_false_negatives(predictions, labels),
+        'Recall_1': slim.metrics.streaming_recall_at_k(
+            logits, labels, 1),
     })
 
     # Print the summaries to screen.

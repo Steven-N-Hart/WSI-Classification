@@ -546,8 +546,7 @@ def main(_):
 
         images = tf.reshape(images,[-1])
         images=tf.reshape(images, [FLAGS.batch_size * num_child_image, train_image_size,train_image_size,3])
-        #print('Batch image shape {}'.format(images))
-        #print('Batch labels shape {}'.format(labels))
+
 
       labels = slim.one_hot_encoding(
           labels, dataset.num_classes - FLAGS.labels_offset)

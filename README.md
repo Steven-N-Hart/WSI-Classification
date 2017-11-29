@@ -38,16 +38,16 @@ mv inception_v3_2016_08_28.tar.gz checkpoints/
 
 # verify it works on the flowers dataset
  python scripts/train_image_classifier.py
- 	--train_dir=${TRAIN_DIR} \
- 	--dataset_name=flowers    \
- 	--dataset_split_name=train \
- 	--dataset_dir $DATASET_DIR \
- 	--model_name=inception_v3  \
- 	--checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
- 	--trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
- 	--checkpoint_path checkpoints/inception_v3.ckpt \
- 	--moving_average_decay 0.05 \
- 	--log_every_n_steps 1000
+    --train_dir=${TRAIN_DIR} \
+    --dataset_name=flowers    \
+    --dataset_split_name=train \
+    --dataset_dir $DATASET_DIR \
+    --model_name=inception_v3  \
+    --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
+    --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
+    --checkpoint_path checkpoints/inception_v3.ckpt \
+    --moving_average_decay 0.05 \
+    --log_every_n_steps 1000
 
 
 
@@ -70,9 +70,8 @@ python scripts/train_image_classifier.py \
 6. Run the naive model on Spitz
 ```
 TRAIN_DIR=/tmp/from_scratch
-for DA in '--DA' ''
-do
- for model_name in inception_v4 inception_v3
+DA='--DA'
+for model_name in inception_v3
  do
  for optimizer in adadelta adagrad adam ftrl momentum sgd rmsprop
  do
@@ -90,10 +89,39 @@ time python scripts/train_image_classifier.py  \
      --num_clones 4 \
      --optimizer ${optimizer} \
      --max_number_of_steps 20000 \
+     --batch_size 5 \
+     --checkpoint_path checkpoints/inception_v3.ckpt \
+    --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
+    --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
      ${DA}
      echo ${model_name}_${DA//-}_${optimizer}_${lr}
     done
   done
  done
-done
+```
+
+THe best model was DA, adam, 0.05.  Try with many more iterations.
+
+```
+lr=0.05
+DA='--DA'
+optimizer='adam'
+
+time python scripts/train_image_classifier.py  \
+    --train_dir=/tmp/${model_name}_${DA//-/}_${optimizer}_${lr} \
+    --dataset_name=spitz     \
+    --train_image_size 299 \
+    --dataset_split_name=train     \
+    --dataset_dir=${DATASET_DIR}    \
+     --model_name=${model_name} \
+     --preprocessing_name spitz  \
+     --log_every_n_steps 1000 \
+     --num_clones 4 \
+     --optimizer ${optimizer} \
+     --max_number_of_steps 200000 \
+     --batch_size 5 \
+     --checkpoint_path checkpoints/inception_v3.ckpt \
+    --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
+    --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
+     ${DA}
 ```

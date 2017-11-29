@@ -14,7 +14,6 @@ import openslide
 import os
 import pprint
 import tensorflow as tf
-import xml.etree.cElementTree as ET
 
 from colour import Color
 from copy import copy
@@ -22,20 +21,20 @@ from PIL import Image
 
 tf.logging.set_verbosity(tf.logging.ERROR)
 
-parser = argparse.ArgumentParser(description='Classify each region of a WSI')
+parser = argparse.ArgumentParser(description='Output a smaller image and heatmap')
 parser.add_argument("-i", "--image", dest='wsi', required=True, help="path to a whole slide image")
 parser.add_argument("-g", "--graph", dest='graph', required=True, help="path to tensorflow graph")
 parser.add_argument("-l", "--labels", dest='label_file', required=True, help="path to image label file that corresponds to TF graph")
-parser.add_argument("-o", "--output", dest='output_name', default="output.xml", help="Name of the output file [default: `output.xml`]")
-parser.add_argument("-t", "--training", dest='training_mode', 
-							choices=["spitz","conventional","Other"],
-							help="Define what the class should be for this slide. Saves the image for further training.")
+parser.add_argument("-o", "--output", dest='output_prefix', default="output", help="Name of the output file prefix [default: `output`]")
+parser.add_argument("-s", "--size", dest='pixel_size', default=1, help="Size to reduce image patch to (e.g. from 299 to 10)")
+
 
 parser.add_argument("-v", "--verbose",
             dest="logLevel",
             choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
             default="INFO",
             help="Set the logging level")
+
 args = parser.parse_args()
 
 pp = pprint.PrettyPrinter(indent=4)
@@ -44,7 +43,6 @@ if args.logLevel:
         logging.basicConfig(level=getattr(logging, args.logLevel))
 
 level_0 = ''
-level_1 = ''
 Annotation_Number = 0
 
 
@@ -66,11 +64,13 @@ def get_color_ranges(n):
 	
 
 def modify_rgb(tup):
-	RGBA = []
+	RGB = []
 	for x in tup:
-		RGBA.append(int(x*255))
-	RGBA.append(255)	
-	return RGBA
+		RGB.append(int(x*255))
+	#RGBA.append(255)	
+	return RGB
+
+
 
 def create_new_array(h_w_dim,RGBA_array):
 	""" This function takes as input:
@@ -80,7 +80,13 @@ def create_new_array(h_w_dim,RGBA_array):
 	
 	returns single color array
 	"""
-	return np.full(h_w_dim,RGBA_array)
+	#Create an array with dummy values
+
+	beginning_array = np.arange(h_w_dim[0]*h_w_dim[1]*h_w_dim[2]).reshape(h_w_dim[0],h_w_dim[1],h_w_dim[2])
+	beginning_array[:,:,:1] = RGBA_array[0]
+	beginning_array[:,:,1:2] = RGBA_array[1]
+	beginning_array[:,:,2:3] = RGBA_array[2]
+	return beginning_array.astype(np.uint8)
 
 def parse_wsi():
 	with tf.Session() as sess:
@@ -120,11 +126,11 @@ def parse_wsi():
 		patch_size = 299
 		patch_tup = (patch_size, patch_size)
 
-		num_x_patches = int(math.floor(img_dim[0] / patch_size))
-		num_y_patches = int(math.floor(img_dim[1] / patch_size))
+		num_x_patches = int(img_dim[0] / patch_size) + 1
+		num_y_patches = int(img_dim[1] / patch_size)+ 1
 
-		remainder_x = img_dim[0] % num_x_patches
-		remainder_y = img_dim[1] % num_y_patches
+		#remainder_x = img_dim[1] % num_x_patches
+		#remainder_y = img_dim[0] % num_y_patches
 
 		logging.debug('The WSI shape is {}'.format(img_dim))
 		logging.debug('There are {} x-patches and {} y-patches to iterate through'.format(num_x_patches,num_y_patches))
@@ -137,15 +143,19 @@ def parse_wsi():
 
 		"""
 		new_image_array = []
-		x_array = []
+		heatmap_array   = []
+		
 		number_of_useful_regions = 0
 
 		for x in range(num_x_patches):
 			"""`x_top_left is` needed by openslide to know where to extract the region """
 			x_top_left = x * patch_size
 			if x % 10 == 0:
-					logging.debug('Done with row {} of {} ({}%)'.format(x,num_x_patches,round(x/num_x_patches*100,2)))
-			y_array = []
+					logging.debug('Done with row {} of {} ({:.2f}%)'.format(x,num_x_patches,x/num_x_patches*100))
+			
+			y_image_array = []
+			y_heatmap_array = []
+
 			for y in range(num_y_patches):
 				"""`y_top_left is` needed by openslide to know where to extract the region """
 				y_top_left = y * num_y_patches
@@ -172,25 +182,89 @@ def parse_wsi():
 					""" If you've reached this spot, then there is something in the image.  So you should take that image, and 
 					run it through the model to get a prediction
 					"""
-					logging.debug('Found a good image at x: {} and y: {} with a mean of {}'.format(x_top_left,y_top_left,round(np.mean(img_data),2)))
+					#logging.debug('Found a good image at x: {} and y: {} with a mean of {}'.
+					#	format(x_top_left,y_top_left,round(np.mean(img_data),2)))
+					
 					predictions = sess.run(softmax_tensor,{'DecodeJpeg/contents:0': image_data})
-					#predictions = np.ndarray.tolist(predictions)
+					#logging.debug('predictions: {}'.format(predictions))
 
+					# exclude poor predictions
+					pred_diff = np.diff(np.squeeze(predictions)[np.argsort(np.squeeze(predictions))][-2:])[0]
+
+					
+					
 					"""Get the color corresponding to the prediction """
-					#section_color = label_colors[np.argmax(predictions)]
-					logging.debug('Prediction: {}\tLabels: {}'.format(predictions[0][np.argmax(predictions)],labels[np.argmax(predictions)]))
-					if args.training_mode and labels[np.argmax(predictions)] != args.training_mode:
-						fn = os.path.join('more_training',args.training_mode + '_' + os.path.basename(args.wsi)) + '_' + str(int(x)) + '_' + str(int(y)) + '.jpg'
-						os.rename('img_data.jpg',fn)
+					section_color = label_colors[np.argmax(predictions)]
 
 
-					#y_array = np.append(y_array,create_new_array(img_data_np.shape,section_color),axis=0)
 					number_of_useful_regions += 1
 					label_dict[labels[np.argmax(predictions)]] += 1
+
+					#Risze the image to the smaller format & Create a heatmap version
+					if pred_diff > 0.1:
+						image = np.array(im.resize( (args.pixel_size,args.pixel_size)))
+						heatmap = np.array(create_new_array((args.pixel_size,args.pixel_size,3),section_color))
+					else:
+						# Not able to be scored.  Append white.
+						image = np.array(im.resize( (args.pixel_size,args.pixel_size)))
+						heatmap = np.array(create_new_array((args.pixel_size,args.pixel_size,3),(255,255,255)))
+
+				else:
+					# Not able to be scored.  Append white.
+					image = np.array(im.resize( (args.pixel_size,args.pixel_size)))
+					heatmap = np.array(create_new_array((args.pixel_size,args.pixel_size,3),(255,255,255)))
+
+				if y == 0:
+					y_image_array = image.flatten()
+					y_heatmap_array = heatmap.flatten()
+				else:
+					y_image_array   = np.append(y_image_array,image.flatten())
+					y_heatmap_array = np.append(y_heatmap_array,heatmap.flatten())
+					
+
+			# Completed row y
+			y_image_array = y_image_array.reshape((
+				args.pixel_size,
+				num_y_patches*args.pixel_size,
+				4))
+			
+			y_heatmap_array = y_heatmap_array.reshape((
+				args.pixel_size,
+				num_y_patches*args.pixel_size,
+				3))
+
+			#print(np.shape(y_image_array))
+			#print(np.shape(y_heatmap_array))
+
+			if x == 0:
+				new_image_array = y_image_array
+				heatmap_array   = y_heatmap_array
+				#print('first new_image_array:{}'.format(new_image_array.shape))
+			else:
+				new_image_array = np.concatenate((new_image_array,y_image_array))
+				heatmap_array = np.concatenate((heatmap_array,y_heatmap_array))
+
+			# if x == 20:
+			# 	logging.info('Classification results: {}'.format(label_dict))
+			# 	logging.debug('number_of_useful_regions: {}'.format(number_of_useful_regions))
+			# 	print('new_image_array:{}'.format(new_image_array.shape))
+			# 	print('heatmap_array:{}'.format(heatmap_array.shape))
+			# 	im = Image.fromarray(new_image_array)
+			# 	im.save(str(args.output_prefix)+"_img.png")
+			# 	im = Image.fromarray(heatmap_array)
+			# 	im.save(str(args.output_prefix)+"_heatmap.png")
+			# 	exit()
 
 
 		logging.info('Classification results: {}'.format(label_dict))
 		logging.debug('number_of_useful_regions: {}'.format(number_of_useful_regions))
+		im = Image.fromarray(new_image_array)
+		im.save(str(args.output_prefix)+"_img.jpeg")
+
+		im = Image.fromarray(heatmap_array)
+		im.save(str(args.output_prefix)+"_heatmap.jpeg")
+		print('image_array:{}'.format(new_image_array.shape))
+		os.remove('img_data.jpg')
 
 if __name__ == '__main__':
 	parse_wsi()
