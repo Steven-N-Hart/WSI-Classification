@@ -26,7 +26,9 @@ parser.add_argument("-i", "--image", dest='wsi', required=True, help="path to a 
 parser.add_argument("-g", "--graph", dest='graph', required=True, help="path to tensorflow graph")
 parser.add_argument("-l", "--labels", dest='label_file', required=True, help="path to image label file that corresponds to TF graph")
 parser.add_argument("-o", "--output", dest='output_prefix', default="output", help="Name of the output file prefix [default: `output`]")
-parser.add_argument("-s", "--size", dest='pixel_size', default=1, help="Size to reduce image patch to (e.g. from 299 to 10)")
+parser.add_argument("-s", "--size", dest='pixel_size', default=1,type=int, help="Size to reduce image patch to (e.g. from 299 to 10)")
+parser.add_argument("-L", "--level", dest='level', default=0,type=int, help="OpenSlide image level [default: `0`]")
+parser.add_argument("-P", "--printif", dest='np_print', default=210,type=int, help="Numpy Mean at which to run a patch [default: `210`]")
 
 
 parser.add_argument("-v", "--verbose",
@@ -41,9 +43,6 @@ pp = pprint.PrettyPrinter(indent=4)
 
 if args.logLevel:
         logging.basicConfig(level=getattr(logging, args.logLevel))
-
-level_0 = ''
-Annotation_Number = 0
 
 
 def create_graph():
@@ -69,6 +68,10 @@ def modify_rgb(tup):
 		RGB.append(int(x*255))
 	#RGBA.append(255)	
 	return RGB
+
+
+MAX_SIZE = 8192  # tensorboard can't take images > this
+
 
 
 
@@ -116,18 +119,39 @@ def parse_wsi():
 		Get width and height tuple for the first level
 		"""
 		img = openslide.OpenSlide(args.wsi)
-		img_dim = img.level_dimensions[0]
-
+		
 		"""
 		Determine what the patch size should be, and how many iterations it will take to get through the WSI
 		"""
-		level = 0
-		np_mean_to_print = 210
+		level = args.level
+		img_dim = img.level_dimensions[level]
+		np_mean_to_print = args.np_print
 		patch_size = 299
 		patch_tup = (patch_size, patch_size)
 
 		num_x_patches = int(img_dim[0] / patch_size) + 1
 		num_y_patches = int(img_dim[1] / patch_size)+ 1
+
+		# find out how large a square I can make
+		sprite_size = num_x_patches*args.pixel_size
+		if sprite_size > MAX_SIZE:
+			print('Your image plans are too large.  The max size is {} x {}, but you are requesting {} x {}'.format(
+				MAX_SIZE, MAX_SIZE, sprite_size, sprite_size))
+			exit()
+		logging.debug('Making an image of size {} x {}'.format(sprite_size,sprite_size))
+
+		# Initialize image
+		master_im = Image.new(
+			mode='RGBA',
+			size=(num_x_patches*args.pixel_size,num_y_patches*args.pixel_size),
+			color=None
+			)
+
+		master_hm = Image.new(
+			mode='RGBA',
+			size=(num_x_patches*args.pixel_size,num_y_patches*args.pixel_size),
+			color=None
+			)
 
 		#remainder_x = img_dim[1] % num_x_patches
 		#remainder_y = img_dim[0] % num_y_patches
@@ -142,13 +166,12 @@ def parse_wsi():
 		to fill in pixels with the color that represents the most likely label.
 
 		"""
-		new_image_array = []
-		heatmap_array   = []
 		
 		number_of_useful_regions = 0
 
 		for x in range(num_x_patches):
 			"""`x_top_left is` needed by openslide to know where to extract the region """
+			#logging.debug('X: {}'.format(x))
 			x_top_left = x * patch_size
 			if x % 10 == 0:
 					logging.debug('Done with row {} of {} ({:.2f}%)'.format(x,num_x_patches,x/num_x_patches*100))
@@ -157,6 +180,7 @@ def parse_wsi():
 			y_heatmap_array = []
 
 			for y in range(num_y_patches):
+				#logging.debug('Y: {}'.format(y))
 				"""`y_top_left is` needed by openslide to know where to extract the region """
 				y_top_left = y * num_y_patches
 				"""
@@ -191,8 +215,7 @@ def parse_wsi():
 					# exclude poor predictions
 					pred_diff = np.diff(np.squeeze(predictions)[np.argsort(np.squeeze(predictions))][-2:])[0]
 
-					
-					
+				
 					"""Get the color corresponding to the prediction """
 					section_color = label_colors[np.argmax(predictions)]
 
@@ -202,68 +225,33 @@ def parse_wsi():
 
 					#Risze the image to the smaller format & Create a heatmap version
 					if pred_diff > 0.1:
-						image = np.array(im.resize( (args.pixel_size,args.pixel_size)))
-						heatmap = np.array(create_new_array((args.pixel_size,args.pixel_size,3),section_color))
+						image = im.resize( (args.pixel_size,args.pixel_size))
+						master_im.paste(image,box=(x*args.pixel_size,y*args.pixel_size))
+						heatmap = Image.fromarray(np.array(create_new_array((args.pixel_size,args.pixel_size,3),section_color)))
+						master_hm.paste(heatmap,(x*args.pixel_size,y*args.pixel_size))
 					else:
-						# Not able to be scored.  Append white.
-						image = np.array(im.resize( (args.pixel_size,args.pixel_size)))
-						heatmap = np.array(create_new_array((args.pixel_size,args.pixel_size,3),(255,255,255)))
+						# Not able to be scored. Append white.
+						image = im.resize( (args.pixel_size,args.pixel_size))
+						master_im.paste(image,box=(x*args.pixel_size,y*args.pixel_size))
+						heatmap = Image.fromarray(np.array(create_new_array((args.pixel_size,args.pixel_size,3),(255,255,255))))
+						master_hm.paste(heatmap,(x*args.pixel_size,y*args.pixel_size))
 
 				else:
 					# Not able to be scored.  Append white.
-					image = np.array(im.resize( (args.pixel_size,args.pixel_size)))
-					heatmap = np.array(create_new_array((args.pixel_size,args.pixel_size,3),(255,255,255)))
-
-				if y == 0:
-					y_image_array = image.flatten()
-					y_heatmap_array = heatmap.flatten()
-				else:
-					y_image_array   = np.append(y_image_array,image.flatten())
-					y_heatmap_array = np.append(y_heatmap_array,heatmap.flatten())
-					
-
-			# Completed row y
-			y_image_array = y_image_array.reshape((
-				args.pixel_size,
-				num_y_patches*args.pixel_size,
-				4))
-			
-			y_heatmap_array = y_heatmap_array.reshape((
-				args.pixel_size,
-				num_y_patches*args.pixel_size,
-				3))
-
-			#print(np.shape(y_image_array))
-			#print(np.shape(y_heatmap_array))
-
-			if x == 0:
-				new_image_array = y_image_array
-				heatmap_array   = y_heatmap_array
-				#print('first new_image_array:{}'.format(new_image_array.shape))
-			else:
-				new_image_array = np.concatenate((new_image_array,y_image_array))
-				heatmap_array = np.concatenate((heatmap_array,y_heatmap_array))
-
-			# if x == 20:
-			# 	logging.info('Classification results: {}'.format(label_dict))
-			# 	logging.debug('number_of_useful_regions: {}'.format(number_of_useful_regions))
-			# 	print('new_image_array:{}'.format(new_image_array.shape))
-			# 	print('heatmap_array:{}'.format(heatmap_array.shape))
-			# 	im = Image.fromarray(new_image_array)
-			# 	im.save(str(args.output_prefix)+"_img.png")
-			# 	im = Image.fromarray(heatmap_array)
-			# 	im.save(str(args.output_prefix)+"_heatmap.png")
-			# 	exit()
+					image = im.resize( (args.pixel_size,args.pixel_size))
+					master_im.paste(image,box=(x*args.pixel_size,y*args.pixel_size))
+					heatmap = Image.fromarray(np.array(create_new_array((args.pixel_size,args.pixel_size,3),(255,255,255))))
+					master_hm.paste(heatmap,box=(x*args.pixel_size,y*args.pixel_size))
 
 
+		#Done with the image loop
 		logging.info('Classification results: {}'.format(label_dict))
 		logging.debug('number_of_useful_regions: {}'.format(number_of_useful_regions))
-		im = Image.fromarray(new_image_array)
-		im.save(str(args.output_prefix)+"_img.jpeg")
+		master_im.save(str(args.output_prefix)+"_img.jpeg")
 
-		im = Image.fromarray(heatmap_array)
-		im.save(str(args.output_prefix)+"_heatmap.jpeg")
-		print('image_array:{}'.format(new_image_array.shape))
+		#im = Image.fromarray(heatmap_array)
+		#im.save(str(args.output_prefix)+"_heatmap.jpeg")
+		master_hm.save(str(args.output_prefix)+"_heatmap.jpeg")
 		os.remove('img_data.jpg')
 
 if __name__ == '__main__':
