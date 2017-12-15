@@ -79,7 +79,48 @@ tf.app.flags.DEFINE_float(
 tf.app.flags.DEFINE_integer(
     'eval_image_size', None, 'Eval image size')
 
+tf.app.flags.DEFINE_boolean('DA_flag', False, 'Data augmentation option. if True, then call "sec_preprocessing" func and average the logits.')
+
+tf.app.flags.DEFINE_string(
+    'sec_preprocessing_name', 'sec_preprocessing', 'The name of the secondary '
+    'preprocessing to use. To create an image list. If left as `None`, then no '
+    'image expansion will be used.')
+
 FLAGS = tf.app.flags.FLAGS
+
+def average_logits(logits, num_child_image, batch_size=FLAGS.batch_size):
+    """ Calculate the average of multiple logits.  Useful when multiple image rotations used
+    for a single prediction.
+    """
+    #print('Average Logits {}\n{}'.format(logits.shape,num_child_image ))
+    logits_list = []
+    n = 0
+    while n < batch_size/num_child_image:
+        logits_temp = tf.reduce_mean(logits[n*num_child_image:(n+1)*num_child_image], axis=0, keep_dims=True)
+        logits_list.append(logits_temp)
+        n = n + 1
+    #logits = tf.concat(logits_list, 0)
+    logits = tf.stack(logits_list)
+    #print('Average Logits {}\t{}'.format(logits.shape,num_child_image ))
+    return logits
+
+def labels_average_logits(labels, num_child_image, batch_size=FLAGS.batch_size):
+    """ When multiple image rotations used for a single prediction, they also have labels duplicated.
+    This step essentially creates those labels.
+    """
+    #print('Average labels {}\n{}'.format(labels.shape,num_child_image ))
+    label_list = []
+    n = 0
+    while n < batch_size/num_child_image:
+        label_single = labels[n*num_child_image]
+        label_list.append(label_single)
+        n = n + 1
+    #labels = tf.concat(label_list, 0)
+    labels = tf.stack(label_list)
+    labels = tf.reshape(labels,(tf.cast(batch_size/num_child_image,tf.int32),1))
+    #print('Average labels {}\t{}\n{}'.format(labels.shape,num_child_image ))
+    return labels
+
 
 
 def main(_):
@@ -126,6 +167,19 @@ def main(_):
     eval_image_size = FLAGS.eval_image_size or network_fn.default_image_size
 
     image = image_preprocessing_fn(image, eval_image_size, eval_image_size)
+    if FLAGS.DA_flag == True: #Data augmentation
+        enqueue_many=True
+        sec_preprocessing_name = FLAGS.sec_preprocessing_name
+        image_sec_preprocessing_fn = preprocessing_factory.get_preprocessing(
+            sec_preprocessing_name)
+        image, num_child_image = image_sec_preprocessing_fn(image)
+        #print('num_child_image: {}'.format(num_child_image))
+        label = [label for i in range(num_child_image)]
+        label=tf.reshape(label, [-1])
+        #print('label: {}'.format(label))
+        #print('image: {}'.format(image))
+    else:
+        enqueue_many=False
 
     images, labels = tf.train.batch(
         [image, label],
@@ -133,10 +187,19 @@ def main(_):
         num_threads=FLAGS.num_preprocessing_threads,
         capacity=5 * FLAGS.batch_size)
 
+    if FLAGS.DA_flag == True:
+        # Need to reshape since now the shape is [batch_size, num_child_image, height, width, channels]
+        # Needs to be [batch_size * num_child_image, height, width, channels]
+        labels=tf.reshape(labels, [-1])
+        labels=tf.reshape(labels, [FLAGS.batch_size * num_child_image, 1])
+
+        images = tf.reshape(images,[-1])
+        images=tf.reshape(images, [FLAGS.batch_size * num_child_image, eval_image_size,eval_image_size,3])
+
     ####################
     # Define the model #
     ####################
-    logits, _ = network_fn(images)
+    logits, end_points = network_fn(images)
 
     if FLAGS.moving_average_decay:
       variable_averages = tf.train.ExponentialMovingAverage(
@@ -149,12 +212,24 @@ def main(_):
 
     predictions = tf.argmax(logits, 1)
     labels = tf.squeeze(labels)
+    
+    #print('Original predictions: {}'.format(predictions))
+    #print('Original labels: {}'.format(labels))
+    
+    if FLAGS.DA_flag == True: #Actually score multiple image rotations of same image
+        predictions = average_logits(predictions, num_child_image)
+        AuxLogits = end_points['AuxLogits']
+        AuxLogits = average_logits(AuxLogits, num_child_image)
+        labels = labels_average_logits(labels, num_child_image)
+        #print('predictions: {}'.format(predictions))
+        #print('AuxLogits: {}'.format(AuxLogits))
+        #print('labels: {}'.format(labels))
+        #exit()
 
 
-    predictions = tf.Print(predictions,[predictions],"Predictions ",summarize=100)
-    labels = tf.Print(labels,[labels],"labels ",summarize=100)
-    logits = tf.Print(logits,[logits],'logits',summarize=100)
-    predictions = tf.Print(predictions,[tf.confusion_matrix(labels,predictions),predictions.shape],'Differences',summarize=10)
+
+    #predictions = tf.Print(predictions,[predictions],"Predictions ",summarize=100)
+    #predictions = tf.Print(predictions,[tf.confusion_matrix(labels,predictions),predictions.shape],'Differences',summarize=10)
 
     # Define the metrics:
     names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
@@ -163,8 +238,7 @@ def main(_):
         'TrueNegatives': slim.metrics.streaming_true_negatives(predictions, labels),
         'FalsePositives': slim.metrics.streaming_false_positives(predictions, labels),
         'FalseNegatives': slim.metrics.streaming_false_negatives(predictions, labels),
-        'Recall_1': slim.metrics.streaming_recall_at_k(
-            logits, labels, 1),
+        #'Recall_1': slim.metrics.streaming_recall_at_k(logits, labels, 1),
     })
 
     # Print the summaries to screen.

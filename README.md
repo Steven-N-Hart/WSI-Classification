@@ -70,58 +70,45 @@ python scripts/train_image_classifier.py \
 6. Run the naive model on Spitz
 ```
 TRAIN_DIR=/tmp/from_scratch
-DA='--DA'
-for model_name in inception_v3
- do
- for optimizer in adadelta adagrad adam ftrl momentum sgd rmsprop
- do
- for lr in 0.01 0.05 0.001
- do
-time python scripts/train_image_classifier.py  \
-    --train_dir=${TRAIN_DIR}/${model_name}_${DA//-/}_${optimizer}_${lr} \
-    --dataset_name=spitz     \
-    --train_image_size 299 \
-    --dataset_split_name=train     \
-    --dataset_dir=${DATASET_DIR}    \
-     --model_name=${model_name} \
-     --preprocessing_name spitz  \
-     --log_every_n_steps 1000 \
-     --num_clones 4 \
-     --optimizer ${optimizer} \
-     --max_number_of_steps 20000 \
-     --batch_size 5 \
-     --checkpoint_path checkpoints/inception_v3.ckpt \
-    --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
-    --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
-     ${DA}
-     echo ${model_name}_${DA//-}_${optimizer}_${lr}
-    done
-  done
- done
+for model_name in inception_v3;  
+do
+    for optimizer in adadelta adagrad adam ftrl momentum sgd rmsprop;
+    do  
+        for lr in 0.01 0.05 0.001;
+        do 
+            time python scripts/train_image_classifier.py \
+            --train_dir=${TRAIN_DIR}/${model_name}_${optimizer}_${lr} \
+            --dataset_name=spitz \
+            --train_image_size 299 \
+            --dataset_split_name=train \
+            --dataset_dir=${DATASET_DIR}  \
+            --model_name=${model_name} \
+            --preprocessing_name spitz \
+            --log_every_n_steps 1000 \  
+            --num_clones 4 \
+            --optimizer ${optimizer}   \
+            --max_number_of_steps 100000 \
+            --batch_size 32  \
+            --checkpoint_path checkpoints/inception_v3.ckpt \
+            --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \ --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits;      
+            echo ${model_name}_${DA//-}_${optimizer}_${lr};     
+        done;   
+    done;
+done
 ```
 
-THe best model was DA, adam, 0.05.  Try with many more iterations.
+Now Evaluate on validation dataset
 
 ```
-lr=0.05
-DA='--DA'
-optimizer='adam'
-
-time python scripts/train_image_classifier.py  \
-    --train_dir=/tmp/${model_name}_${DA//-/}_${optimizer}_${lr} \
-    --dataset_name=spitz     \
-    --train_image_size 299 \
-    --dataset_split_name=train     \
-    --dataset_dir=${DATASET_DIR}    \
-     --model_name=${model_name} \
-     --preprocessing_name spitz  \
-     --log_every_n_steps 1000 \
-     --num_clones 4 \
-     --optimizer ${optimizer} \
-     --max_number_of_steps 200000 \
-     --batch_size 5 \
-     --checkpoint_path checkpoints/inception_v3.ckpt \
-    --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
-    --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
-     ${DA}
+for x in `ls -d /tmp/from_checkpoint/*|xargs -I{} basename {}`
+do
+    python scripts/eval_image_classifier.py \
+        --checkpoint_path /tmp/from_checkpoint/${x}/ \
+        --eval_dir results/$x \
+        --dataset_name spitz \
+        --dataset_split_name validation \
+        --model_name inception_v3 \
+        --preprocessing_name spitz \
+        --dataset_dir /data/images/
+done
 ```

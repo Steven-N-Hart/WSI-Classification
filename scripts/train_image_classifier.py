@@ -491,8 +491,6 @@ def main(_):
         FLAGS.model_name,
         num_classes=(dataset.num_classes - FLAGS.labels_offset),
         weight_decay=FLAGS.weight_decay,
-        depth_multiplier=FLAGS.depth_multiplier,
-        dropout_keep_prob=FLAGS.dropout_keep_prob,
         is_training=True)
 
     #####################################
