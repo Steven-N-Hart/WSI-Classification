@@ -126,8 +126,9 @@ def init_patch_constraints(img):
   np_mean_to_print = FLAGS.np_print
   patch_size = FLAGS.eval_image_size
 
-  num_x_patches = int(img_dim[0] / patch_size) + 1
-  num_y_patches = int(img_dim[1] / patch_size)+ 1
+  num_x_patches = int(img_dim[0] / patch_size) + 5
+  num_y_patches = int(img_dim[1] / patch_size) + 5
+
 
   # find out how large a square I can make
   sprite_size = num_x_patches*FLAGS.pixel_size
@@ -223,7 +224,7 @@ def parse_wsi():
       im = Image.fromarray(img_data_np)
       image_data = img_data_np
       
-      if np.mean(img_data_np) < FLAGS.np_print:
+      if np.mean(img_data_np) < FLAGS.np_print and np.mean(img_data_np) > 20: #Make sure the entire image isn't black
         """ If you've reached this spot, then there is something in the image.  So you should take that image, and 
         run it through the model to get a prediction
         """

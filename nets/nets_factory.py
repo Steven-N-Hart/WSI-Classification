@@ -49,7 +49,7 @@ arg_scopes_map = {'inception_v1': inception.inception_v3_arg_scope,
                   }
 
 
-def get_network_fn(name, num_classes, weight_decay=0.0, is_training=False):
+def get_network_fn(name, num_classes, weight_decay=0.0, is_training=False,depth_multiplier=1.0, dropout_keep_prob=0.8):
   """Returns a network_fn such as `logits, end_points = network_fn(images)`.
 
   Args:

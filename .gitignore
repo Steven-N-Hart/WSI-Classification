@@ -1,3 +1,7 @@
-*/*/*/*/*/*/*/*/__pycache__/
+*/__pycache__/
 checkpoints/
 nets/
+*jpeg
+*jpg
+inception_v3_rmsprop_0.01_da/
+results/

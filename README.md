@@ -38,23 +38,23 @@ mv inception_v3_2016_08_28.tar.gz checkpoints/
 
 # verify it works on the flowers dataset
  python scripts/train_image_classifier.py
- 	--train_dir=${TRAIN_DIR} \
- 	--dataset_name=flowers    \
- 	--dataset_split_name=train \
- 	--dataset_dir $DATASET_DIR \
- 	--model_name=inception_v3  \
- 	--checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
- 	--trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
- 	--checkpoint_path checkpoints/inception_v3.ckpt \
- 	--moving_average_decay 0.05 \
- 	--log_every_n_steps 1000
+    --train_dir=${TRAIN_DIR} \
+    --dataset_name=flowers    \
+    --dataset_split_name=train \
+    --dataset_dir $DATASET_DIR \
+    --model_name=inception_v3  \
+    --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
+    --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
+    --checkpoint_path checkpoints/inception_v3.ckpt \
+    --moving_average_decay 0.05 \
+    --log_every_n_steps 1000
 
 
 
 5. Run the pretrained model on the SPITZ dataset.
 ```
 DATASET_DIR=/data/images/
-TRAIN_DIR=/tmp/train_logs
+TRAIN_DIR=/tmp/from_checkpoint
 python scripts/train_image_classifier.py \
     --train_dir=${TRAIN_DIR} \
     --dataset_name=spitz \
@@ -65,4 +65,50 @@ python scripts/train_image_classifier.py \
     --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
     --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \
     --preprocessing_name spitz 
+```
+
+6. Run the naive model on Spitz
+```
+TRAIN_DIR=/tmp/from_scratch
+for model_name in inception_v3;  
+do
+    for optimizer in adadelta adagrad adam ftrl momentum sgd rmsprop;
+    do  
+        for lr in 0.01 0.05 0.001;
+        do 
+            time python scripts/train_image_classifier.py \
+            --train_dir=${TRAIN_DIR}/${model_name}_${optimizer}_${lr} \
+            --dataset_name=spitz \
+            --train_image_size 299 \
+            --dataset_split_name=train \
+            --dataset_dir=${DATASET_DIR}  \
+            --model_name=${model_name} \
+            --preprocessing_name spitz \
+            --log_every_n_steps 1000 \  
+            --num_clones 4 \
+            --optimizer ${optimizer}   \
+            --max_number_of_steps 100000 \
+            --batch_size 32  \
+            --checkpoint_path checkpoints/inception_v3.ckpt \
+            --checkpoint_exclude_scopes=InceptionV3/Logits,InceptionV3/AuxLogits \ --trainable_scopes=InceptionV3/Logits,InceptionV3/AuxLogits;      
+            echo ${model_name}_${DA//-}_${optimizer}_${lr};     
+        done;   
+    done;
+done
+```
+
+Now Evaluate on validation dataset
+
+```
+for x in `ls -d /tmp/from_checkpoint/*|xargs -I{} basename {}`
+do
+    python scripts/eval_image_classifier.py \
+        --checkpoint_path /tmp/from_checkpoint/${x}/ \
+        --eval_dir results/$x \
+        --dataset_name spitz \
+        --dataset_split_name validation \
+        --model_name inception_v3 \
+        --preprocessing_name spitz \
+        --dataset_dir /data/images/
+done
 ```

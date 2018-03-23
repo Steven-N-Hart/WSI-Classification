@@ -37,7 +37,7 @@ _ITEMS_TO_DESCRIPTIONS = {
 }
 
 
-def get_split(split_name, dataset_dir, file_pattern='spitz_train', reader=None):
+def get_split(split_name, dataset_dir, file_pattern='spitz', reader=None):
   """Gets a dataset tuple with instructions for reading flowers.
 
   Args:
@@ -89,7 +89,7 @@ def get_split(split_name, dataset_dir, file_pattern='spitz_train', reader=None):
   num_samples = 0
   tfrecords_to_count = [os.path.join(dataset_dir, file)
     for file in os.listdir(dataset_dir)
-    if file.startswith(file_pattern)]
+    if file.startswith(file_pattern+'_'+split_name)]
 
   for tfrecord_file in tfrecords_to_count:
     record_num=1

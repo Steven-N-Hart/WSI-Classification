@@ -70,7 +70,8 @@ def print_pics(x_top_left,y_top_left,img_data,img):
 		global number_of_useful_regions
 		number_of_useful_regions += 1
 		img_name = os.path.basename(wsi) + "_" + str(x_top_left) + "_" + str(y_top_left) + "_" + str(args.patch_size)
-		write_img_rotations(img_data_np,img_name)
+		#write_img_rotations(img_data_np,img_name)
+		save_image(img_data_np,1,img_name)
 		
 def gen_x_and_y(xlist,ylist,img):
 	for x in xlist:
@@ -125,32 +126,33 @@ def save_image(img,j,img_name):
 	except:
 		print('Could not print {}'.format(base_name))
 
-def write_img_rotations(img,img_name):
-	""" Have to print all these rotations since my preprocessing script
-		will only accept 1 image at a time
-	"""
-	try:
-		for i in range(4):
-			save_image(img,i,img_name)
-			img = np.rot90(img, k=1)
-			
-			img = np.fliplr(img)
-			save_image(img,4,img_name)
-
-		for i in range(5,9):
-			save_image(img,i,img_name)
-			img = np.rot90(img, k=1)		
-
-		i+=1
-		if i % 1000 == 0:
-			print('{:.2f}% Complete with {} at {}'.format(i/num_images * 100,img_type,strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime())),end="\r")
-
-	except (RuntimeError, TypeError, NameError,IOError) as e:
-		print('Failed to convert {}\n\t {}'.format(base_name,e))
-	except:
-		print('Died for another reason: {}'.format(base_name))
-		exit()
+#def write_img_rotations(img,img_name):
+#	""" Have to print all these rotations since my preprocessing script
+#		will only accept 1 image at a time
+#	"""
+#	try:
+#		for i in range(4):
+#			save_image(img,i,img_name)
+#			img = np.rot90(img, k=1)
+#			
+#			img = np.fliplr(img)
+#			save_image(img,4,img_name)
+#
+#		for i in range(5,9):
+#			save_image(img,i,img_name)
+#			img = np.rot90(img, k=1)		
+#
+#		i+=1
+#		if i % 1000 == 0:
+#			print('{:.2f}% Complete with {} at {}'.format(i/num_images * 100,img_type,strftime("%a, %d %b %Y %H:%M:%S +0000", gmtime())),end="\r")
+#
+#	except (RuntimeError, TypeError, NameError,IOError) as e:
+#		print('Failed to convert {}\n\t {}'.format(base_name,e))
+#	except:
+#		print('Died for another reason: {}'.format(base_name))
+#		exit()
 
 if __name__ == '__main__':
 	validate_dir_exists()
 	main()
+
