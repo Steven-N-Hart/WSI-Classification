@@ -191,8 +191,7 @@ python scripts/create_tf_records.py \
 # where the TFRecords directory is
 DATASET_DIR=/data/naiveTesting/TFRecords/
 
-#for step in $(seq 50000 50000 250001)
-for step in $(seq 200000 50000 650001)
+for step in $(seq 50000 50000 250001)
 do
     # Run naive model
     TRAIN_DIR=results/non_curated/inception_v3_rmsprop_0.01
