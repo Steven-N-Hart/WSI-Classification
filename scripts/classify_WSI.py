@@ -17,22 +17,41 @@ from nets import nets_factory
 from preprocessing import preprocessing_factory
 
 
-tf.app.flags.DEFINE_string('wsi',None, 'Whole slide image file')
-tf.app.flags.DEFINE_string('label_file',None, 'Path to image label file that corresponds to TF graph.')
-tf.app.flags.DEFINE_string('logLevel',None, 'Logging level to set [DEBUG, INFO, etc.]')
+# tf.app.flags.DEFINE_string('wsi',None, 'Whole slide image file')
+# tf.app.flags.DEFINE_string('label_file','records/labels.txt', 'Path to image label file that corresponds to TF graph.')
+# tf.app.flags.DEFINE_string('logLevel',None, 'Logging level to set [DEBUG, INFO, etc.]')
 
-tf.app.flags.DEFINE_string('model_name', 'inception_v3', 'The name of the architecture to evaluate.')
-tf.app.flags.DEFINE_string('preprocessing_name', None, 'The name of the preprocessing to use. If left as `None`, then the model_name flag is used.')
-tf.app.flags.DEFINE_string('checkpoint_path', '/tmp/from_scratch/inception_v3_rmsprop_0.01/','The directory where the model was written to or an absolute path to a checkpoint file.')
-tf.app.flags.DEFINE_integer('eval_image_size', 299, 'Eval image size.')
+# tf.app.flags.DEFINE_string('model_name', 'inception_v3', 'The name of the architecture to evaluate.')
+# tf.app.flags.DEFINE_string('preprocessing_name', 'spitz', 'The name of the preprocessing to use. If left as `None`, then the model_name flag is used.')
+# tf.app.flags.DEFINE_string('checkpoint_path', 'results/from_scratch/inception_v3_rmsprop_0.01','The directory where the model was written to or an absolute path to a checkpoint file.')
+# tf.app.flags.DEFINE_integer('eval_image_size', 299, 'Eval image size.')
 
-tf.app.flags.DEFINE_string('output_prefix',None, 'Name of the output file prefix [default: `output`]')
-tf.app.flags.DEFINE_integer('pixel_size', 10, 'Size to reduce image patch to (e.g. from 299 to 10)')
-tf.app.flags.DEFINE_integer('level', 0, 'OpenSlide image level [default: `0`]')
-tf.app.flags.DEFINE_integer('np_print', 210, 'Numpy Mean at which to run a patch [default: `210`]')
-tf.app.flags.DEFINE_string('dict_file','summary.dict', 'Whether or not to append to dict.summary [default: `False`]')
+# tf.app.flags.DEFINE_string('output_prefix',None, 'Name of the output file prefix [default: `output`]')
+# tf.app.flags.DEFINE_integer('pixel_size', 10, 'Size to reduce image patch to (e.g. from 299 to 10)')
+# tf.app.flags.DEFINE_integer('level', 0, 'OpenSlide image level [default: `0`]')
+# tf.app.flags.DEFINE_integer('np_print', 210, 'Numpy Mean at which to run a patch [default: `210`]')
+# tf.app.flags.DEFINE_string('dict_file','summary.dict', 'Name of file to write metrics to [default: `dict.summary`]')
+# tf.app.flags.DEFINE_boolean('image_out',False, 'Whether or not to print image heatmaps [default: `False`]')
 
-FLAGS = tf.app.flags.FLAGS
+# FLAGS = tf.app.flags.FLAGS
+
+import argparse
+parser = argparse.ArgumentParser(description='Process WSI')
+parser.add_argument('--wsi', type=str, help='Whole slide image')
+parser.add_argument('--label_file', type=str, help='label file')
+parser.add_argument('--logLevel', default="INFO", type=str, help='Logging level', required=False)
+parser.add_argument('--model_name', type=str, help='whole slide image', default='inception_v3', required=False)
+parser.add_argument('--preprocessing_name', type=str, help='whole slide image', default='spitz')
+parser.add_argument('--checkpoint_path', type=str, help='whole slide image')
+parser.add_argument('--eval_image_size', type=int, default=299, help='whole slide image', required=False)
+parser.add_argument('--output_prefix', type=str, default='output', help='whole slide image', required=False)
+parser.add_argument('--pixel_size', type=int, default=10, help='whole slide image', required=False)
+parser.add_argument('--level', type=int, default=0, help='whole slide image', required=False)
+parser.add_argument('--np_print', type=int, default=210, help='whole slide image', required=False)
+parser.add_argument('--dict_file', type=str, help='whole slide image')
+parser.add_argument('--image_out', action='store_true', help='whole slide image', required=False)
+
+FLAGS = parser.parse_args()
 
 ######################################
 # Do argument parsing and set defaults
@@ -47,7 +66,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 slim = tf.contrib.slim
 model_name_to_variables = {'inception_v3':'InceptionV3','inception_v4':'InceptionV4','resnet_v1_50':'resnet_v1_50','resnet_v1_152':'resnet_v1_152'}
 
-preprocessing_name = FLAGS.preprocessing_name or FLAGS.model_name
+preprocessing_name = preprocessing_name = FLAGS.preprocessing_name or FLAGS.model_name
 eval_image_size = FLAGS.eval_image_size
 
 model_variables = model_name_to_variables.get(FLAGS.model_name)
@@ -236,9 +255,12 @@ def parse_wsi():
              
         ###########################################
         ### Start reading image and calling it ####
-        im.save('img_data.jpg')
-        image_data = tf.gfile.FastGFile('img_data.jpg', 'rb').read()
-        image_contents =open('img_data.jpg', 'rb').read()
+        # save image with a random number, so I can run multiple processes simultaneously
+        rand_num = str(np.random.randint(100))
+        im.save(rand_num + 'img_data.jpg')
+        image_data = tf.gfile.FastGFile(rand_num + 'img_data.jpg', 'rb').read()
+        image_contents =open(rand_num + 'img_data.jpg', 'rb').read()
+        os.remove(rand_num + 'img_data.jpg')
         predictions = sess.run(probabilities, feed_dict={image_string:image_contents})
         # logging.debug('Predictions: {}'.format(predictions))
         ### End reading image and calling it ####
@@ -281,11 +303,13 @@ def parse_wsi():
 
 
   logging.info('number_of_useful_regions: {}'.format(number_of_useful_regions))
-  master_im.save(str(FLAGS.output_prefix)+"_img.jpeg")
 
-  #im = Image.fromarray(heatmap_array)
-  master_hm.save(str(FLAGS.output_prefix)+"_heatmap.jpeg")
-  os.remove('img_data.jpg')
+  if FLAGS.image_out is True:
+    master_im.save(str(FLAGS.output_prefix)+"_img.jpeg")
+    #im = Image.fromarray(heatmap_array)
+    master_hm.save(str(FLAGS.output_prefix)+"_heatmap.jpeg")
+
+
 
   #Done with the image loop
   logging.info('Classification results: {}'.format(label_dict))
@@ -295,15 +319,15 @@ def parse_wsi():
     data_count.append(value)
   data_count = '\t'.join(str(x) for x in data_count)
 
-  if not os.path.exists('summary.dict'):
+  if not os.path.exists(FLAGS.dict_file):
     header= ['WSI']
     for key, value in label_dict.items():
       header.append(key)
     header = '\t'.join(header)
-    with open('summary.dict','w') as f:
+    with open(FLAGS.dict_file,'w') as f:
       f.write(header+"\n")
 
-  with open('summary.dict','a') as f:
+  with open(FLAGS.dict_file,'a') as f:
     f.write(data_count+"\n")
 
 

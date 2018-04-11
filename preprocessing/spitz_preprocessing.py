@@ -23,10 +23,16 @@ import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 
 def preprocess_for_eval(image, height, width):
-  return tf.image.resize_images(image, [height, width])
+  image = tf.image.resize_images(image, [height, width]) 
+  image = tf.image.per_image_standardization(image)
+  return image
 
 def preprocess_for_train(image, height, width):
-  return tf.image.resize_images(image, [height, width])
+  image = tf.image.resize_images(image, [height, width])
+  image = tf.image.per_image_standardization(image)
+  image = tf.image.random_flip_left_right(image)
+  image = tf.image.random_flip_up_down(image)
+  return image
 
 def preprocess_image(image, height, width,
                      is_training=False
@@ -43,16 +49,10 @@ def preprocess_image(image, height, width,
     width: integer, image expected width.
     is_training: Boolean. If true it would transform an image for train,
       otherwise it would transform it for evaluation.
-    bbox: 3-D float Tensor of bounding boxes arranged [1, num_boxes, coords]
-      where each coordinate is [0, 1) and the coordinates are arranged as
-      [ymin, xmin, ymax, xmax].
-    fast_mode: Optional boolean, if True avoids slower transformations.
 
   Returns:
     3-D float Tensor containing an appropriately scaled image
 
-  Raises:
-    ValueError: if user does not provide bounding box
   """
   #print('Preprcessing image',image,height,width)
   if is_training:

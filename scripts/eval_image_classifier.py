@@ -24,6 +24,9 @@ import tensorflow as tf
 from datasets import dataset_factory
 from nets import nets_factory
 from preprocessing import preprocessing_factory
+import os
+
+#os.environ["CUDA_VISIBLE_DEVICES"]=""
 
 slim = tf.contrib.slim
 
@@ -233,11 +236,8 @@ def main(_):
 
     # Define the metrics:
     names_to_values, names_to_updates = slim.metrics.aggregate_metric_map({
-        'Accuracy': slim.metrics.streaming_accuracy(predictions, labels),
-        'TruePositives': slim.metrics.streaming_true_positives(predictions, labels),        
-        'TrueNegatives': slim.metrics.streaming_true_negatives(predictions, labels),
-        'FalsePositives': slim.metrics.streaming_false_positives(predictions, labels),
-        'FalseNegatives': slim.metrics.streaming_false_negatives(predictions, labels),
+        'val/Accuracy': slim.metrics.streaming_accuracy(predictions, labels),
+        #'val/ROC': slim.metrics.streaming_curve_points(labels=labels, predictions=predictions)
         #'Recall_1': slim.metrics.streaming_recall_at_k(logits, labels, 1),
     })
 
@@ -263,7 +263,9 @@ def main(_):
     tf.logging.info('Evaluating %s' % checkpoint_path)
 
     slim.evaluation.evaluate_once(
+    #slim.evaluation.evaluation_loop(
         master=FLAGS.master,
+        #checkpoint_dir=checkpoint_path,
         checkpoint_path=checkpoint_path,
         logdir=FLAGS.eval_dir,
         num_evals=num_batches,
