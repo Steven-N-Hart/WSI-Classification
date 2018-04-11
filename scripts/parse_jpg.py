@@ -34,7 +34,7 @@ if args.logLevel:
 
 
 """ Set global variables """
-image_path=os.path.abspath(args.image_file)
+image_path=os.path.abspath(r"args.image_file")
 out_dir = os.path.abspath(args.output_name)
 
 if not os.path.isdir(args.output_name):

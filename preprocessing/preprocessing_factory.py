@@ -21,7 +21,6 @@ from __future__ import print_function
 import tensorflow as tf
 
 from preprocessing import spitz_preprocessing
-from preprocessing import sec_preprocessing
 
 slim = tf.contrib.slim
 
@@ -43,8 +42,7 @@ def get_preprocessing(name, is_training=False):
     ValueError: If Preprocessing `name` is not recognized.
   """
   preprocessing_fn_map = {
-      'spitz': spitz_preprocessing,
-      'sec_preprocessing': sec_preprocessing,
+      'spitz': spitz_preprocessing
   }
 
   if name not in preprocessing_fn_map:

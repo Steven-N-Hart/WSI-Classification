@@ -28,7 +28,8 @@ import math
 import os
 import random
 import sys
-
+from random import random
+import imghdr
 import tensorflow as tf
 
 from datasets import dataset_utils
@@ -51,8 +52,8 @@ tf.app.flags.DEFINE_integer(
 tf.app.flags.DEFINE_integer(
     'random_seed', 1, 'Random seed [1].')
 
-tf.app.flags.DEFINE_integer(
-    'validation_count', 1000, 'Number of images to go in your validation set. [1000]')
+tf.app.flags.DEFINE_float(
+    'validation_percent', 0.3, 'Percent of images to go in your validation set. [0.3]')
 
 FLAGS = tf.app.flags.FLAGS
 
@@ -97,13 +98,19 @@ def _get_filenames_and_classes():
             directories.append(path)
             class_names.append(filename)
 
-    photo_filenames = []
+    photo_filenames_training = []
+    photo_filenames_validation = []
     for directory in directories:
         for filename in os.listdir(directory):
-            path = os.path.join(directory, filename)
-            photo_filenames.append(path)
 
-    return photo_filenames, sorted(class_names)
+            path = os.path.join(directory, filename)
+            assert(imghdr.what(path) is 'jpeg')
+            if random() < FLAGS.validation_percent:
+              photo_filenames_validation.append(path)
+            else:
+              photo_filenames_training.append(path)
+
+    return photo_filenames_validation, photo_filenames_training, sorted(class_names)
 
 
 def _get_dataset_filename(dataset_dir, split_name, shard_id,prefix=FLAGS.prefix):
@@ -173,15 +180,11 @@ def run(dataset_dir):
     tf.gfile.MakeDirs(dataset_dir)
 
 
-  photo_filenames, class_names = _get_filenames_and_classes()
+  validation_filenames, training_filenames, class_names = _get_filenames_and_classes()
 
   class_names_to_ids = dict(zip(class_names, range(len(class_names))))
 
-  # Divide into train and test:
-  random.seed(FLAGS.random_seed)
-  random.shuffle(photo_filenames)
-  training_filenames = photo_filenames[FLAGS.validation_count:]
-  validation_filenames = photo_filenames[:FLAGS.validation_count]
+
   # First, convert the training and validation sets.
   _convert_dataset('train', training_filenames, class_names_to_ids,
                    dataset_dir)
