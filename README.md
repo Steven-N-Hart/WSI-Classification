@@ -3,6 +3,30 @@
 The purpose of this repo is to extend the functionality of TF-Slim for use in other projects.
 This is derived from  commit `70c86f2` of (tensorflow/models)[https://github.com/tensorflow/models].
 
+
+## Installation
+to use
+
+```
+# Build the docker image
+docker build -t stevenhart/wsi-classification .
+
+# initialize the docker container and map volumes
+# here I map my current working directory to `/data` so I can get my output
+# I also map `/path/to/img/` so I know where to get my whole slide images
+docker run -it --rm -v $PWD:/data -v /path/to/img:/img stevenhart/wsi-classification
+
+```
+Once inside the container, I can call scripts like:
+```
+python WSI-Classification/scripts/patch_extraction.py -i img/163538.svs -p 56 -o data/ -b 0.8 -v DEBUG
+
+#which will output the results into the current directory on the host machine.
+```
+
+
+## The full process
+
 ## 0. Initialize variables
 ```
 # Get tensorflow models

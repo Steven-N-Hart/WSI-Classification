@@ -69,8 +69,11 @@ def print_pics(x_top_left,y_top_left,img_data,img):
 		logging.debug('Image grayscale = {} compared to threshold {}'.format(np.mean(grey_img),mean_grey_values))
 		global number_of_useful_regions
 		number_of_useful_regions += 1
-		img_name = os.path.basename(wsi) + "_" + str(x_top_left) + "_" + str(y_top_left) + "_" + str(args.patch_size)
+                wsi_base = os.path.basename(wsi)
+                wsi_base = wsi_base.split('.')[0]
+		img_name = wsi_base + "_" + str(x_top_left) + "_" + str(y_top_left) + "_" + str(args.patch_size)
 		#write_img_rotations(img_data_np,img_name)
+                logging.debug('Saving {} {} {}'.format(x_top_left,y_top_left,np.mean(grey_img)))
 		save_image(img_data_np,1,img_name)
 		
 def gen_x_and_y(xlist,ylist,img):
@@ -120,12 +123,13 @@ def rgb2gray(rgb):
 	return gray
 
 def save_image(img,j,img_name):
+        tmp = os.path.join(outname,img_name+"_"+str(j)+".png")
 	try:
 		im = Image.fromarray(img)
-		im.save(os.path.join(outname,img_name+"_"+str(j)+".jpeg"))
+		im.save(tmp)
 	except:
-		print('Could not print {}'.format(base_name))
-
+		print('Could not print {}'.format(tmp))
+                exit()
 #def write_img_rotations(img,img_name):
 #	""" Have to print all these rotations since my preprocessing script
 #		will only accept 1 image at a time
